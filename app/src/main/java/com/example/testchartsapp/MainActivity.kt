@@ -49,9 +49,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun App(
-    modifier: Modifier = Modifier,
-) {
+fun App() {
     val navController = rememberNavController()
     NavHost(
         startDestination = "home_screen",

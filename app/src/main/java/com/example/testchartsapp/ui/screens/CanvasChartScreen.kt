@@ -1,5 +1,6 @@
 package com.example.testchartsapp.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,7 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -31,14 +35,15 @@ fun CanvasChartScreen(
     val chartData = remember {
         val highestPrice = fakeChartData.maxOf { it.price }
         fakeChartData.map {
-            it to BarItem(
-                isSelected = false,
+            BarItem(
                 height = (it.price / highestPrice).toFloat(),
             )
         }
     }.toMutableStateList()
     val barColor = Color(0xFF80C362)
     val selectedBarColor = Color(0xFF545A63)
+
+    var selectedBar: BarItem? by remember { mutableStateOf(null) }
 
     val barPositions = remember {
         ArrayList<ClosedFloatingPointRange<Float>>()
@@ -58,40 +63,48 @@ fun CanvasChartScreen(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { tapOffset ->
-                            val tappedIndex = barPositions.indexOfFirst { it.contains(tapOffset.x) }
-                            chartData.apply {
-                                val removed = removeAt(tappedIndex)
-                                add(tappedIndex, removed.copy(second = removed.second.copy(isSelected = !removed.second.isSelected)))
+                            val tappedIndex = barPositions
+                                .indexOfFirst { it.contains(tapOffset.x) }
+                                .takeIf { it >= 0 }
+                            tappedIndex?.let {
+                                selectedBar = (if (selectedBar == chartData[it]) null else chartData[it])
+                            }
+                            Log.d("TESTING", "CanvasChartScreen: selectedBar = $selectedBar. tapOffset = $tapOffset")
+                            barPositions.forEachIndexed { index, closedFloatingPointRange ->
+                                Log.d("TESTING", "CanvasChartScreen: #$index. range = $closedFloatingPointRange")
                             }
                         }
                     )
-                }
-            ,
+                },
         ) {
             val barWidth = this.size.width / chartData.size / 2
             val padding = barWidth / 2
 
-            var x = padding
-            chartData.forEachIndexed { index, (price, barItem) ->
+            var x = 0f
+            if (barPositions.size != chartData.size) {
+                barPositions.clear()
+            }
+            chartData.forEachIndexed { index, barItem ->
                 val barHeight = this.size.height * barItem.height
-                val xEndOfBar = x + barWidth // TODO: Consider taking padding into entire range
-                barPositions.add(x..xEndOfBar)
+                val xStartOfBar = x + padding
+                if (barPositions.size != chartData.size) {
+                    val tappableRange = x..(x + barWidth + padding * 2)
+                    barPositions.add(tappableRange)
+                }
                 drawRoundRect(
-                    color = if (barItem.isSelected) selectedBarColor else barColor,
-                    topLeft = Offset(x, size.height - barHeight),
+                    color = if (barItem == selectedBar) selectedBarColor else barColor,
+                    topLeft = Offset(xStartOfBar, size.height - barHeight),
                     size = Size(barWidth, barHeight),
                     cornerRadius = CornerRadius(25f, 25f),
                 )
                 x += barWidth + padding * 2
             }
-
         }
     }
 }
 
 @Immutable
 data class BarItem(
-    val isSelected: Boolean,
     val height: Float,
 )
 
