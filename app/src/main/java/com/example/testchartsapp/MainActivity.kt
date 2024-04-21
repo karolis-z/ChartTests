@@ -17,7 +17,7 @@ import co.yml.charts.common.model.Point
 import co.yml.charts.ui.barchart.BarChart
 import co.yml.charts.ui.barchart.models.BarChartData
 import co.yml.charts.ui.barchart.models.BarData
-import com.example.testchartsapp.ui.screens.CanvasChartScreen
+import com.example.testchartsapp.ui.screens.canvaschart.CanvasChartScreen
 import com.example.testchartsapp.ui.screens.HomeScreen
 import com.example.testchartsapp.ui.screens.ScrollableCanvasChartScreen
 import com.example.testchartsapp.ui.theme.TestChartsAppTheme
