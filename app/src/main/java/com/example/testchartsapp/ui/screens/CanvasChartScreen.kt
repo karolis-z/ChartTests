@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,39 +44,19 @@ fun CanvasChartScreen(
     prices: List<Price> = fakeChartData
 ) {
     val originalItems = remember { prices.toMutableStateList() }
-    val chartData: SnapshotStateList<Pair<BarItem, Float>> = remember(originalItems.toList()) {
-        mutableStateListOf<Pair<BarItem, Float>>().apply {
-            val highestPrice = originalItems.maxOf { it.price }
-            addAll(
-                originalItems.map {
-                    BarItem(
-                        id = it.time.toEpochSecond(ZoneOffset.UTC),
-                        heightFraction = (it.price / highestPrice).toFloat(),
-                    ) to 0f
-                }
+    val tempItemForRemovalTest = remember { originalItems[4].copy(time = originalItems[4].time.plusMinutes(30)) }
+
+    val bars = remember(originalItems.toList()) {
+        val highestPrice = originalItems.maxOf { it.price }
+        originalItems.map {
+            BarItem(
+                id = it.time.toEpochSecond(ZoneOffset.UTC),
+                heightFraction = (it.price / highestPrice).toFloat(),
             )
         }
     }
 
-    val tempItemForRemovalTest = remember { originalItems[4].copy(time = originalItems[4].time.plusMinutes(30)) }
-
-    val animationValues = chartData.map { (_, height) ->
-        animateFloatAsState(
-            targetValue = height,
-            animationSpec = tween(durationMillis = 1000),
-            label = "Bar height animation",
-        )
-    }
-
-
-    val barColor = Color(0xFF80C362)
-    val selectedBarColor = Color(0xFF545A63)
-
     var selectedBar: BarItem? by remember { mutableStateOf(null) }
-
-    val barPositions = remember {
-        ArrayList<ClosedFloatingPointRange<Float>>()
-    }
 
     Column(
         modifier = Modifier
@@ -84,89 +65,132 @@ fun CanvasChartScreen(
             .padding(horizontal = 12.dp)
         ,
     ) {
-        Canvas(
+        BarChart(
+            chartData = BarChartData(
+                bars = bars,
+            ),
+            onSelectBar = { selectedBar = it },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp)
                 .padding(all = 4.dp)
-                .border(0.5.dp, Color.Green)
-                .pointerInput(chartData) {
-                    detectTapGestures(
-                        onTap = { tapOffset ->
-                            val tappedIndex = barPositions
-                                .indexOfFirst { it.contains(tapOffset.x) }
-                                .takeIf { it >= 0 }
-                            tappedIndex?.let {
-                                selectedBar =
-                                    (if (selectedBar?.id == chartData[it].first.id) null else chartData[it].first)
-                            }
-                        }
-                    )
-                },
-        ) {
-            val barWidth = this.size.width / chartData.size / 2
-            val padding = barWidth / 2
-
-            var x = 0f
-
-            if (barPositions.size != chartData.size) { barPositions.clear() }
-
-            chartData.forEachIndexed { index, (barItem, _) ->
-                val barHeight = this.size.height * barItem.heightFraction
-
-                chartData[index] = chartData[index].copy(second = barHeight)
-
-                if (barPositions.size != chartData.size) {
-                    barPositions.add(x..(x + barWidth + padding * 2))
-                }
-                drawBar(
-                    x = x + padding,
-                    y = size.height - animationValues[index].value,
-                    width = barWidth,
-                    height = animationValues[index].value,
-                    color = if (barItem.id == selectedBar?.id) selectedBarColor else barColor,
-                )
-                x += barWidth + padding * 2
-            }
-        }
+                .border(0.5.dp, Color.Green),
+        )
 
         ScreenContent(
             originalItems = originalItems,
-            chartData = chartData,
-            tempItem = tempItemForRemovalTest,
+            onAddRemoveItemClick = {
+                if (bars.size <= 24) {
+                    originalItems.add(3, tempItemForRemovalTest)
+                } else {
+                    originalItems.removeAt(3)
+                }
+            },
+            onRandomize5thItemClick = {
+                originalItems[4] = originalItems[4].copy(price = Random.nextDouble(1.00, 4.5))
+            },
             selectedBar = selectedBar,
+            selectedIndex = selectedBar?.let { bars.indexOf(it) }
         )
     }
 }
 
 @Composable
+private fun BarChart(
+    chartData: BarChartData,
+    onSelectBar: (BarItem?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val barColor = Color(0xFF80C362)
+    val selectedBarColor = Color(0xFF545A63)
+
+    var selectedBar: BarItem? by remember { mutableStateOf(null) }
+    LaunchedEffect(key1 = selectedBar?.id) {
+        onSelectBar(selectedBar)
+    }
+
+    val bars: SnapshotStateList<Pair<BarItem, Float>> = remember(chartData.bars) {
+        mutableStateListOf<Pair<BarItem, Float>>().apply {
+            addAll(chartData.bars.map { it to 0f})
+        }
+    }
+    val animationValues = bars.map { (_, height) ->
+        animateFloatAsState(
+            targetValue = height,
+            animationSpec = tween(durationMillis = 1000),
+            label = "Bar height animation",
+        )
+    }
+
+    val barPositions = remember { ArrayList<ClosedFloatingPointRange<Float>>() }
+
+    Canvas(
+        modifier = modifier.pointerInput(bars) {
+            detectTapGestures(
+                onTap = { tapOffset ->
+                    val tappedIndex = barPositions
+                        .indexOfFirst { it.contains(tapOffset.x) }
+                        .takeIf { it >= 0 }
+                    tappedIndex?.let {
+                        selectedBar =
+                            (if (selectedBar?.id == bars[it].first.id) null else bars[it].first)
+                    }
+                }
+            )
+        },
+    ) {
+        val barWidth = this.size.width / bars.size / 2
+        val padding = barWidth / 2
+
+        var x = 0f
+
+        if (barPositions.size != bars.size) { barPositions.clear() }
+
+        bars.forEachIndexed { index, (barItem, _) ->
+            val barHeight = this.size.height * barItem.heightFraction
+
+            bars[index] = bars[index].copy(second = barHeight)
+
+            if (barPositions.size != bars.size) {
+                barPositions.add(x..(x + barWidth + padding * 2))
+            }
+            drawBar(
+                x = x + padding,
+                y = size.height - animationValues[index].value,
+                width = barWidth,
+                height = animationValues[index].value,
+                color = if (barItem.id == selectedBar?.id) selectedBarColor else barColor,
+            )
+            x += barWidth + padding * 2
+        }
+    }
+}
+
+@Immutable
+data class BarChartData(
+    val bars: List<BarItem>,
+)
+
+@Composable
 private fun ScreenContent(
     originalItems: SnapshotStateList<Price>,
-    chartData: SnapshotStateList<Pair<BarItem, Float>>,
-    tempItem: Price,
+    onAddRemoveItemClick: () -> Unit,
+    onRandomize5thItemClick: () -> Unit,
     selectedBar: BarItem?,
+    selectedIndex: Int?,
 ) {
     Spacer(modifier = Modifier.height(50.dp))
-    Button(onClick = {
-        if (chartData.size <= 24) {
-            originalItems.add(3, tempItem)
-        } else {
-            originalItems.removeAt(3)
-        }
-    }) {
+    Button(onClick = onAddRemoveItemClick) {
         Text(text = "Add/remove item")
     }
     Spacer(modifier = Modifier.height(20.dp))
-    Button(onClick = {
-        originalItems[4] = originalItems[4].copy(price = Random.nextDouble(1.00, 4.5))
-    }) {
+    Button(onClick = onRandomize5thItemClick) {
         Text(text = "Randomize 5th item")
     }
 
     fun getSelectedText(): String {
-        val selectedIndex = chartData.indexOfFirst { it.first == selectedBar }.takeIf { it >= 0 }
         return selectedIndex?.let { index ->
-            "#$index: " + originalItems[index].toString() + "\nHeight: ${chartData[index].first.heightFraction}"
+            "#$index: " + originalItems[index].toString() + "\nHeight: ${selectedBar?.heightFraction}"
         } ?: "None selected"
     }
 
