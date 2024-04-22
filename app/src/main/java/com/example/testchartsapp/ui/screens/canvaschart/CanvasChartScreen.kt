@@ -22,6 +22,7 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChart
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartData
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarItem
@@ -45,6 +46,7 @@ fun CanvasChartScreen(
                 id = it.time.toEpochSecond(ZoneOffset.UTC),
                 heightFraction = (it.price / highestPrice).toFloat(),
                 color = it.priceLevel.barColor(),
+                label = it.time.format(DateTimeFormatter.ofPattern("H:mm")),
             )
         }
     }
@@ -61,6 +63,10 @@ fun CanvasChartScreen(
         BarChart(
             chartData = BarChartData(
                 bars = bars,
+                labelTextStyle = MaterialTheme.typography.bodySmall.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                selectedLineColor = MaterialTheme.colorScheme.onSurface,
             ),
             onSelectBar = { selectedBar = it },
             modifier = Modifier
