@@ -22,6 +22,7 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.testchartsapp.R
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChart
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartData
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarItem
@@ -40,13 +41,19 @@ fun CanvasChartScreen(
     val tempItemForRemovalTest = remember { originalItems[4].copy(time = originalItems[4].time.plusMinutes(30)) }
 
     val bars = remember(originalItems.toList()) {
-        val highestPrice = originalItems.maxOf { it.price }
-        originalItems.map {
+        val highestPrice = originalItems.maxOfOrNull { it.price }?.takeIf { it > 0.0 }
+        val lowestPrice = originalItems.filter { it.price > 0 }.minOfOrNull { it.price }
+        originalItems.map { price ->
             BarItem(
-                id = it.time.toEpochSecond(ZoneOffset.UTC),
-                heightFraction = (it.price / highestPrice).toFloat(),
-                color = it.priceLevel.barColor(),
-                label = it.time.format(DateTimeFormatter.ofPattern("H:mm")),
+                id = price.time.toEpochSecond(ZoneOffset.UTC),
+                heightFraction = highestPrice?.let { (price.price / it).toFloat() } ?: 0f,
+                color = price.priceLevel.barColor(),
+                label = price.time.format(DateTimeFormatter.ofPattern("H:mm")),
+                icon = when (price.price) {
+                    highestPrice -> BarItem.Icon(R.drawable.ic_skull, Color(0xFF80C362))
+                    lowestPrice -> BarItem.Icon(R.drawable.ic_heart_power, Color(0xFF313842))
+                    else -> null
+                }
             )
         }
     }
@@ -69,6 +76,7 @@ fun CanvasChartScreen(
                 lineSettings = SelectedBarIndicatorLine(
                     color = MaterialTheme.colorScheme.onSurface,
                 ),
+                iconSize = 16.dp,
             ),
             onSelectBar = { selectedBar = it },
             modifier = Modifier

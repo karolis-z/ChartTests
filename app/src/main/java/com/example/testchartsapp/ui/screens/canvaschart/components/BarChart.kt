@@ -1,5 +1,6 @@
 package com.example.testchartsapp.ui.screens.canvaschart.components
 
+import androidx.annotation.DrawableRes
 import androidx.annotation.FloatRange
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -27,7 +28,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope.Companion.DefaultBlendMode
 import androidx.compose.ui.graphics.drawscope.inset
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -35,9 +39,10 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.center
 import androidx.compose.ui.unit.dp
+import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.BarAndContentVerticalSpacing
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.BarLabelPadding
+import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.IconVerticalPadding
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.MinimumSelectedBarIndicatorLineLength
-import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.SpaceBetweenIndicatorLineAndBar
 
 @Composable
 fun BarChart(
@@ -53,6 +58,14 @@ fun BarChart(
     val bars: SnapshotStateList<Pair<BarItem, Float>> = remember(chartData.bars) {
         mutableStateListOf<Pair<BarItem, Float>>().apply {
             addAll(chartData.bars.map { it to 0f})
+        }
+    }
+    val icons = bars.map { (bar, _) ->
+        bar.icon?.let {
+            BarPainter(
+                painter = painterResource(id = it.iconResId),
+                color = it.color,
+            )
         }
     }
     val barHeightAnimationValues = bars.map { (_, height) ->
@@ -120,11 +133,13 @@ fun BarChart(
 
         if (barPositions.size != bars.size) { barPositions.clear() }
 
+        val iconSize = chartData.iconSize.toPx()
+        val iconSpace = iconSize + IconVerticalPadding.toPx() * 2
+
         var x = 0f
         bars.forEachIndexed { index, (barItem, _) ->
-            inset(0f, heightForLabel, 0f, 0f) {
+            inset(0f, heightForLabel + iconSpace, 0f, 0f) {
                 val barHeight = this.size.height * barItem.heightFraction
-
                 bars[index] = bars[index].copy(second = barHeight)
 
                 if (barPositions.size != bars.size) {
@@ -141,10 +156,21 @@ fun BarChart(
             }
 
             val xEnd = x + barWidth + padding * 2
+            val xBarMiddle = (xEnd - x) / 2 + x
+
+            val contentAboveBarY = barHeightAnimationValues[index].value + BarAndContentVerticalSpacing.toPx()
+
+            val icon = icons[index]
+            if (icon != null && !barItem.isSelected()) {
+                drawIcon(
+                    x = xBarMiddle - iconSize / 2,
+                    y = size.height - contentAboveBarY - iconSize,
+                    icon = icon,
+                    size = iconSize,
+                )
+            }
 
             if (barItem.isSelected()) {
-                val xBarMiddle = (xEnd - x) / 2 + x
-
                 val textResult = textMeasurer.measure(
                     text = barItem.label,
                     style = chartData.labelTextStyle,
@@ -161,12 +187,12 @@ fun BarChart(
                         y = labelPadding,
                     ),
                 )
-                chartData.lineSettings?.let {
+                chartData.lineSettings?.let { line ->
                     drawSelectedIndicatorLine(
                         x = xBarMiddle,
-                        barHeight = barHeightAnimationValues[index].value,
-                        textHeight = textResult.size.height,
-                        lineSettings = it,
+                        startY = labelPadding * 2f + textResult.size.height,
+                        endY = size.height - contentAboveBarY,
+                        lineSettings = line,
                     )
                 }
             }
@@ -195,14 +221,10 @@ private fun DrawScope.drawBar(
 
 private fun DrawScope.drawSelectedIndicatorLine(
     x: Float,
-    barHeight: Float,
-    textHeight: Int,
+    startY: Float,
+    endY: Float,
     lineSettings: SelectedBarIndicatorLine,
-    labelPadding: Int = BarLabelPadding.roundToPx(),
 ) {
-    val startY = labelPadding * 2f + textHeight
-    val endY = size.height - barHeight - SpaceBetweenIndicatorLineAndBar.roundToPx()
-
     if (endY >= startY + MinimumSelectedBarIndicatorLineLength.roundToPx()) {
         drawLine(
             color = lineSettings.color,
@@ -218,10 +240,27 @@ private fun DrawScope.drawSelectedIndicatorLine(
     }
 }
 
+private fun DrawScope.drawIcon(
+    x: Float,
+    y: Float,
+    icon: BarPainter,
+    size: Float,
+) {
+    with(icon.painter) {
+        translate(x, y) {
+            draw(
+                size = Size(size, size),
+                colorFilter = ColorFilter.tint(icon.color)
+            )
+        }
+    }
+}
+
 private object BarChartDefaults {
-    val BarLabelPadding = 1.dp
+    val BarLabelPadding = 2.dp
     val MinimumSelectedBarIndicatorLineLength = 3.dp
-    val SpaceBetweenIndicatorLineAndBar = 3.dp
+    val BarAndContentVerticalSpacing = 3.dp
+    val IconVerticalPadding = 2.dp
 }
 
 @Immutable
@@ -229,6 +268,7 @@ data class BarChartData(
     val bars: List<BarItem>,
     val labelTextStyle: TextStyle,
     val lineSettings: SelectedBarIndicatorLine?,
+    val iconSize: Dp = 16.dp,
 )
 
 @Immutable
@@ -249,4 +289,17 @@ data class BarItem(
     val heightFraction: Float,
     val color: Color,
     val label: String,
+    val icon: Icon? = null,
+) {
+    @Immutable
+    data class Icon(
+        @DrawableRes val iconResId: Int,
+        val color: Color,
+    )
+}
+
+@Immutable
+data class BarPainter(
+    val painter: Painter,
+    val color: Color,
 )
