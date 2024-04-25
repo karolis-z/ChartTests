@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChart
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartData
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarItem
+import com.example.testchartsapp.ui.screens.canvaschart.components.SelectedBarIndicatorLine
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -65,7 +66,9 @@ fun CanvasChartScreen(
                 labelTextStyle = MaterialTheme.typography.bodySmall.copy(
                     color = MaterialTheme.colorScheme.onSurface,
                 ),
-                selectedLineColor = MaterialTheme.colorScheme.onSurface,
+                lineSettings = SelectedBarIndicatorLine(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
             ),
             onSelectBar = { selectedBar = it },
             modifier = Modifier

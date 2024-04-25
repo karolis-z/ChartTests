@@ -1,6 +1,6 @@
 package com.example.testchartsapp.ui.screens.canvaschart.components
 
-import android.util.Log
+import androidx.annotation.FloatRange
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,18 +19,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope.Companion.DefaultBlendMode
 import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.center
 import androidx.compose.ui.unit.dp
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.BarLabelPadding
+import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.MinimumSelectedBarIndicatorLineLength
+import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.SpaceBetweenIndicatorLineAndBar
 
 @Composable
 fun BarChart(
@@ -69,11 +77,18 @@ fun BarChart(
     val barPositions = remember { ArrayList<ClosedFloatingPointRange<Float>>() }
     val textMeasurer = rememberTextMeasurer()
 
-    // TODO: Need a better way, because this does not account for padding within canvas. This could measure as 1 line but would actually be 2 lined text
-    val maxLabelHeight = remember(chartData) {
-        chartData.bars.maxOf {
-            textMeasurer.measure(it.label, chartData.labelTextStyle).size.height
-        }
+    var textDrawableWidth by remember { mutableFloatStateOf(0f) }
+
+    val maxLabelHeight = remember(chartData, textDrawableWidth) {
+        if (textDrawableWidth >= 0f) {
+            chartData.bars.maxOf { bar ->
+                textMeasurer.measure(
+                    text = bar.label,
+                    style = chartData.labelTextStyle,
+                    constraints = Constraints(maxWidth = textDrawableWidth.toInt())
+                ).size.height
+            }
+        } else 0
     }
 
     fun BarItem.isSelected(): Boolean {
@@ -95,16 +110,17 @@ fun BarChart(
             )
         },
     ) {
+        val labelPadding = BarLabelPadding.toPx()
+        textDrawableWidth = size.width - labelPadding * 2
+
         val barWidth = this.size.width / bars.size / 2
         val padding = barWidth / 2
 
-        var x = 0f
-
-        val labelPadding = BarLabelPadding.toPx()
         val heightForLabel = maxLabelHeight + labelPadding * 2
 
         if (barPositions.size != bars.size) { barPositions.clear() }
 
+        var x = 0f
         bars.forEachIndexed { index, (barItem, _) ->
             inset(0f, heightForLabel, 0f, 0f) {
                 val barHeight = this.size.height * barItem.heightFraction
@@ -132,11 +148,12 @@ fun BarChart(
                 val textResult = textMeasurer.measure(
                     text = barItem.label,
                     style = chartData.labelTextStyle,
-                    constraints = Constraints(maxWidth = (size.width - labelPadding * 2).toInt()),
+                    constraints = Constraints(maxWidth = textDrawableWidth.toInt()),
                 )
-                Log.d("DRAWTEXT", "BarChart: xstart = $x. xEnd = $xEnd. text width = ${textResult.size.width}. text height = ${textResult.size.height}. drawable width = ${size.width}. label padding = $labelPadding")
-                val labelXStart = (xBarMiddle - textResult.size.center.x).coerceIn(0f + labelPadding, size.width - labelPadding - textResult.size.width)
-//                val labelXEnd = size.width - (labelXStart + textMeasured.size.width)
+                val labelXStart = (xBarMiddle - textResult.size.center.x).coerceIn(
+                    minimumValue = 0f + labelPadding,
+                    maximumValue = size.width - labelPadding - textResult.size.width
+                )
                 drawText(
                     textLayoutResult = textResult,
                     topLeft = Offset(
@@ -144,26 +161,12 @@ fun BarChart(
                         y = labelPadding,
                     ),
                 )
-
-                // TODO: End could calculate to be fore start. Need some checks before deciding to draw.
-                // TODO: better variable naming 
-                val startY = labelPadding * 2 + textResult.size.height
-                val endY = size.height - barHeightAnimationValues[index].value - 3.dp.toPx()
-                Log.d("TESTING", "BarChart: endY of line = $endY. start y = ${labelPadding * 2 + textResult.size.height}")
-                // TODO: More complex logic needed? Need some buffer to decide to draw the line? Maybe at least 3dp length? 
-                if (endY > startY) {
-                    drawLine(
-                        color = chartData.selectedLineColor,
-                        start = Offset(
-                            x = xBarMiddle,
-                            y = labelPadding * 2 + textResult.size.height,
-                        ),
-                        end = Offset(
-                            x = xBarMiddle,
-                            y = size.height - barHeightAnimationValues[index].value - 3.dp.toPx(),
-                        ),
-                        strokeWidth = 2.dp.toPx(),
-                        cap = StrokeCap.Round,
+                chartData.lineSettings?.let {
+                    drawSelectedIndicatorLine(
+                        x = xBarMiddle,
+                        barHeight = barHeightAnimationValues[index].value,
+                        textHeight = textResult.size.height,
+                        lineSettings = it,
                     )
                 }
             }
@@ -190,16 +193,53 @@ private fun DrawScope.drawBar(
     )
 }
 
+private fun DrawScope.drawSelectedIndicatorLine(
+    x: Float,
+    barHeight: Float,
+    textHeight: Int,
+    lineSettings: SelectedBarIndicatorLine,
+    labelPadding: Int = BarLabelPadding.roundToPx(),
+) {
+    val startY = labelPadding * 2f + textHeight
+    val endY = size.height - barHeight - SpaceBetweenIndicatorLineAndBar.roundToPx()
+
+    if (endY >= startY + MinimumSelectedBarIndicatorLineLength.roundToPx()) {
+        drawLine(
+            color = lineSettings.color,
+            start = Offset(x, startY),
+            end = Offset(x, endY),
+            strokeWidth = lineSettings.strokeWidth.toPx(),
+            cap = lineSettings.cap,
+            pathEffect = lineSettings.pathEffect,
+            alpha = lineSettings.alpha,
+            colorFilter = lineSettings.colorFilter,
+            blendMode = lineSettings.blendMode,
+        )
+    }
+}
+
 private object BarChartDefaults {
     val BarLabelPadding = 1.dp
+    val MinimumSelectedBarIndicatorLineLength = 3.dp
+    val SpaceBetweenIndicatorLineAndBar = 3.dp
 }
 
 @Immutable
 data class BarChartData(
     val bars: List<BarItem>,
     val labelTextStyle: TextStyle,
-    // TODO: Something more extensive to cover other styling options?
-    val selectedLineColor: Color,
+    val lineSettings: SelectedBarIndicatorLine?,
+)
+
+@Immutable
+data class SelectedBarIndicatorLine(
+    val color: Color,
+    val strokeWidth: Dp = 2.dp,
+    val cap: StrokeCap = StrokeCap.Round,
+    val pathEffect: PathEffect? = null,
+    @FloatRange(from = 0.0, to = 1.0) val alpha: Float = 1.0f,
+    val colorFilter: ColorFilter? = null,
+    val blendMode: BlendMode = DefaultBlendMode,
 )
 
 
