@@ -22,7 +22,6 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChart
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartData
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarItem
@@ -89,7 +88,9 @@ fun CanvasChartScreen(
                 originalItems[4] = originalItems[4].copy(price = Random.nextDouble(1.00, 4.5))
             },
             selectedBar = selectedBar,
-            selectedIndex = selectedBar?.let { bars.indexOf(it) }
+            selectedIndex = selectedBar?.let { bar ->
+                bars.indexOfFirst { bar.id == selectedBar?.id }.takeIf { it >= 0 }
+            }
         )
     }
 }
