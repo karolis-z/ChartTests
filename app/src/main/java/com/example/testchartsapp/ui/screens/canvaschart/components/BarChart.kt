@@ -5,10 +5,11 @@ import androidx.annotation.FloatRange
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -30,7 +31,9 @@ import androidx.compose.ui.graphics.drawscope.DrawScope.Companion.DefaultBlendMo
 import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -50,16 +53,39 @@ fun BarChart(
     onSelectBar: (BarItem?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedBar: BarItem? by remember { mutableStateOf(null) }
-    LaunchedEffect(key1 = selectedBar?.id) {
-        onSelectBar(selectedBar)
-    }
+    val haptic = LocalHapticFeedback.current
 
     val bars: SnapshotStateList<Pair<BarItem, Float>> = remember(chartData.bars) {
         mutableStateListOf<Pair<BarItem, Float>>().apply {
             addAll(chartData.bars.map { it to 0f})
         }
     }
+    val barPositions = remember { ArrayList<ClosedFloatingPointRange<Float>>() }
+
+    var touchX: Float? by remember { mutableStateOf(null) }
+    val selectedBar: BarItem? by remember {
+        derivedStateOf {
+            val x = touchX
+            when {
+                x == null -> null
+                x < 0f -> null
+                else -> {
+                    val index = barPositions
+                        .indexOfFirst { it.contains(x) }
+                        .takeIf { it >= 0 }
+                    index?.let { bars[it].first }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(key1 = selectedBar?.id) {
+        onSelectBar(selectedBar)
+        if (selectedBar != null) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
+
     val icons = bars.map { (bar, _) ->
         bar.icon?.let {
             BarPainter(
@@ -87,7 +113,6 @@ fun BarChart(
         )
     }
 
-    val barPositions = remember { ArrayList<ClosedFloatingPointRange<Float>>() }
     val textMeasurer = rememberTextMeasurer()
 
     var textDrawableWidth by remember { mutableFloatStateOf(0f) }
@@ -110,17 +135,11 @@ fun BarChart(
 
     Canvas(
         modifier = modifier.pointerInput(bars) {
-            detectTapGestures(
-                onTap = { tapOffset ->
-                    val tappedIndex = barPositions
-                        .indexOfFirst { it.contains(tapOffset.x) }
-                        .takeIf { it >= 0 }
-                    tappedIndex?.let {
-                        selectedBar =
-                            (if (selectedBar?.id == bars[it].first.id) null else bars[it].first)
-                    }
-                }
-            )
+            detectDragGestures(
+                onDragCancel = { touchX = null },
+                onDragEnd = { touchX = null },
+                onDragStart = { touchX = it.x }
+            ) { _, dragAmount -> touchX = touchX?.plus(dragAmount.x) }
         },
     ) {
         val labelPadding = BarLabelPadding.toPx()
