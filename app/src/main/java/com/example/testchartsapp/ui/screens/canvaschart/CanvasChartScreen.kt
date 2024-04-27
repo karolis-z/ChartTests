@@ -27,6 +27,7 @@ import com.example.testchartsapp.ui.screens.canvaschart.components.BarChart
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartData
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarItem
 import com.example.testchartsapp.ui.screens.canvaschart.components.SelectedBarIndicatorLine
+import com.example.testchartsapp.ui.screens.canvaschart.components.XAxisLabelFormatter
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -44,8 +45,9 @@ fun CanvasChartScreen(
         val highestPrice = originalItems.maxOfOrNull { it.price }?.takeIf { it > 0.0 }
         val lowestPrice = originalItems.filter { it.price > 0 }.minOfOrNull { it.price }
         originalItems.map { price ->
-            BarItem(
+            BarItem<Price>(
                 id = price.time.toEpochSecond(ZoneOffset.UTC),
+                xValue = price,
                 heightFraction = highestPrice?.let { (price.price / it).toFloat() } ?: 0f,
                 color = price.priceLevel.barColor(),
                 label = price.time.format(DateTimeFormatter.ofPattern("H:mm")),
@@ -53,12 +55,12 @@ fun CanvasChartScreen(
                     highestPrice -> BarItem.Icon(R.drawable.ic_skull, Color(0xFF80C362))
                     lowestPrice -> BarItem.Icon(R.drawable.ic_heart_power, Color(0xFF313842))
                     else -> null
-                }
+                },
             )
         }
     }
 
-    var selectedBar: BarItem? by remember { mutableStateOf(null) }
+    var selectedBar: BarItem<Price>? by remember { mutableStateOf(null) }
 
     Column(
         modifier = Modifier
@@ -67,7 +69,9 @@ fun CanvasChartScreen(
             .padding(horizontal = 12.dp)
         ,
     ) {
-        BarChart(
+        val xLabelStyle = MaterialTheme.typography.bodySmall
+        val xPlaceholderLabelStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
+        BarChart<Price>(
             chartData = BarChartData(
                 bars = bars,
                 labelTextStyle = MaterialTheme.typography.bodySmall.copy(
@@ -77,6 +81,22 @@ fun CanvasChartScreen(
                     color = MaterialTheme.colorScheme.onSurface,
                 ),
                 iconSize = 16.dp,
+                xAxisLabelFormatter = XAxisLabelFormatter.rememberXAxisLabelFormatter (
+                    format = { price ->
+                        if (price.time.hour.mod(6) == 0 || price.time.hour == 23) {
+                            price.time.hour.toString()
+                        } else {
+                            "-"
+                        }
+                    },
+                    style = { price ->
+                        if (price.time.hour.mod(6) == 0 || price.time.hour == 23) {
+                            xLabelStyle
+                        } else {
+                            xPlaceholderLabelStyle
+                        }
+                    }
+                ),
             ),
             onSelectBar = { selectedBar = it },
             modifier = Modifier
@@ -111,7 +131,7 @@ private fun ScreenContent(
     originalItems: SnapshotStateList<Price>,
     onAddRemoveItemClick: () -> Unit,
     onRandomize5thItemClick: () -> Unit,
-    selectedBar: BarItem?,
+    selectedBar: BarItem<Price>?,
     selectedIndex: Int?,
 ) {
     Spacer(modifier = Modifier.height(50.dp))

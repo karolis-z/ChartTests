@@ -48,22 +48,22 @@ import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefau
 import com.example.testchartsapp.ui.screens.canvaschart.components.BarChartDefaults.MinimumSelectedBarIndicatorLineLength
 
 @Composable
-fun BarChart(
-    chartData: BarChartData,
-    onSelectBar: (BarItem?) -> Unit,
+fun <T> BarChart (
+    chartData: BarChartData<T>,
+    onSelectBar: (BarItem<T>?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptic = LocalHapticFeedback.current
 
-    val bars: SnapshotStateList<Pair<BarItem, Float>> = remember(chartData.bars) {
-        mutableStateListOf<Pair<BarItem, Float>>().apply {
+    val bars: SnapshotStateList<Pair<BarItem<T>, Float>> = remember(chartData.bars) {
+        mutableStateListOf<Pair<BarItem<T>, Float>>().apply {
             addAll(chartData.bars.map { it to 0f})
         }
     }
     val barPositions = remember { ArrayList<ClosedFloatingPointRange<Float>>() }
 
     var touchX: Float? by remember { mutableStateOf(null) }
-    val selectedBar: BarItem? by remember {
+    val selectedBar: BarItem<T>? by remember {
         derivedStateOf {
             val x = touchX
             when {
@@ -73,7 +73,7 @@ fun BarChart(
                     val index = barPositions
                         .indexOfFirst { it.contains(x) }
                         .takeIf { it >= 0 }
-                    index?.let { bars[it].first }
+                    index?.let { bars.getOrNull(it)?.first }
                 }
             }
         }
@@ -117,7 +117,7 @@ fun BarChart(
 
     var textDrawableWidth by remember { mutableFloatStateOf(0f) }
 
-    val maxLabelHeight = remember(chartData, textDrawableWidth) {
+    val maxTopLabelHeight = remember(chartData, textDrawableWidth) {
         if (textDrawableWidth >= 0f) {
             chartData.bars.maxOf { bar ->
                 textMeasurer.measure(
@@ -128,8 +128,20 @@ fun BarChart(
             }
         } else 0
     }
+    
+    val maxXAxisLabelHeight = remember(chartData, textDrawableWidth) {
+        if (textDrawableWidth >= 0f) {
+            chartData.bars.maxOf { bar ->
+                textMeasurer.measure(
+                    text = chartData.xAxisLabelFormatter.getXAxisLabel(bar.xValue),
+                    style = chartData.xAxisLabelFormatter.getStyle(bar.xValue),
+                    constraints = Constraints(maxWidth = textDrawableWidth.toInt())
+                ).size.height.toFloat()
+            }
+        } else 0f
+    }
 
-    fun BarItem.isSelected(): Boolean {
+    fun BarItem<T>.isSelected(): Boolean {
         return this.id == selectedBar?.id
     }
 
@@ -148,7 +160,8 @@ fun BarChart(
         val barWidth = this.size.width / bars.size / 2
         val padding = barWidth / 2
 
-        val heightForLabel = maxLabelHeight + labelPadding * 2
+        val heightForTopLabel = maxTopLabelHeight + labelPadding * 2
+        val heightForXLabels = maxXAxisLabelHeight + labelPadding * 2
 
         if (barPositions.size != bars.size) { barPositions.clear() }
 
@@ -156,67 +169,86 @@ fun BarChart(
         val iconSpace = iconSize + IconVerticalPadding.toPx() * 2
 
         var x = 0f
-        bars.forEachIndexed { index, (barItem, _) ->
-            inset(0f, heightForLabel + iconSpace, 0f, 0f) {
-                val barHeight = this.size.height * barItem.heightFraction
-                bars[index] = bars[index].copy(second = barHeight)
 
-                if (barPositions.size != bars.size) {
-                    barPositions.add(x..(x + barWidth + padding * 2))
-                }
-                drawBar(
-                    x = x + padding,
-                    y = size.height - barHeightAnimationValues[index].value,
-                    width = barWidth,
-                    height = barHeightAnimationValues[index].value,
-                    color = barItem.color,
-                    alpha = barAlphaAnimationValues[index].value
-                )
-            }
+        bars.forEachIndexed { index, (barItem, _) ->
 
             val xEnd = x + barWidth + padding * 2
             val xBarMiddle = (xEnd - x) / 2 + x
 
-            val contentAboveBarY = barHeightAnimationValues[index].value + BarAndContentVerticalSpacing.toPx()
+            val xLabelResult = textMeasurer.measure(
+                text = chartData.xAxisLabelFormatter.getXAxisLabel(barItem.xValue),
+                style = chartData.xAxisLabelFormatter.getStyle(barItem.xValue),
+            )
 
-            val icon = icons[index]
-            if (icon != null && !barItem.isSelected()) {
-                drawIcon(
-                    x = xBarMiddle - iconSize / 2,
-                    y = size.height - contentAboveBarY - iconSize,
-                    icon = icon,
-                    size = iconSize,
+            drawText(
+                textLayoutResult = xLabelResult,
+                topLeft = Offset(
+                    x = xBarMiddle - xLabelResult.size.center.x, // TODO: CHECK TO NOT GO OUT OF BOUNDS
+                    y = size.height - xLabelResult.size.height - labelPadding,
                 )
-            }
+            )
 
-            if (barItem.isSelected()) {
-                val textResult = textMeasurer.measure(
-                    text = barItem.label,
-                    style = chartData.labelTextStyle,
-                    constraints = Constraints(maxWidth = textDrawableWidth.toInt()),
-                )
-                val labelXStart = (xBarMiddle - textResult.size.center.x).coerceIn(
-                    minimumValue = 0f + labelPadding,
-                    maximumValue = size.width - labelPadding - textResult.size.width
-                )
-                drawText(
-                    textLayoutResult = textResult,
-                    topLeft = Offset(
-                        x = labelXStart,
-                        y = labelPadding,
-                    ),
-                )
-                chartData.lineSettings?.let { line ->
-                    drawSelectedIndicatorLine(
-                        x = xBarMiddle,
-                        startY = labelPadding * 2f + textResult.size.height,
-                        endY = size.height - contentAboveBarY,
-                        lineSettings = line,
+            inset(0f, 0f, 0f, heightForXLabels) {
+
+                inset(0f, heightForTopLabel + iconSpace, 0f, 0f) {
+                    val barHeight = this.size.height * barItem.heightFraction
+                    bars[index] = bars[index].copy(second = barHeight)
+
+                    if (barPositions.size != bars.size) {
+                        barPositions.add(x..(x + barWidth + padding * 2))
+                    }
+                    drawBar(
+                        x = x + padding,
+                        y = size.height - barHeightAnimationValues[index].value,
+                        width = barWidth,
+                        height = barHeightAnimationValues[index].value,
+                        color = barItem.color,
+                        alpha = barAlphaAnimationValues[index].value
                     )
                 }
-            }
 
-            x = xEnd
+
+                val contentAboveBarY = barHeightAnimationValues[index].value + BarAndContentVerticalSpacing.toPx()
+
+                val icon = icons[index]
+                if (icon != null && !barItem.isSelected()) {
+                    drawIcon(
+                        x = xBarMiddle - iconSize / 2,
+                        y = size.height - contentAboveBarY - iconSize,
+                        icon = icon,
+                        size = iconSize,
+                    )
+                }
+
+                if (barItem.isSelected()) {
+                    val textResult = textMeasurer.measure(
+                        text = barItem.label,
+                        style = chartData.labelTextStyle,
+                        constraints = Constraints(maxWidth = textDrawableWidth.toInt()),
+                    )
+                    val labelXStart = (xBarMiddle - textResult.size.center.x).coerceIn(
+                        minimumValue = 0f + labelPadding,
+                        maximumValue = size.width - labelPadding - textResult.size.width
+                    )
+                    drawText(
+                        textLayoutResult = textResult,
+                        topLeft = Offset(
+                            x = labelXStart,
+                            y = labelPadding,
+                        ),
+                    )
+                    chartData.lineSettings?.let { line ->
+                        drawSelectedIndicatorLine(
+                            x = xBarMiddle,
+                            startY = labelPadding * 2f + textResult.size.height,
+                            endY = size.height - contentAboveBarY,
+                            lineSettings = line,
+                        )
+                    }
+                }
+
+                x = xEnd
+            }
         }
     }
 }
@@ -283,12 +315,42 @@ private object BarChartDefaults {
 }
 
 @Immutable
-data class BarChartData(
-    val bars: List<BarItem>,
+data class BarChartData<T>(
+    val bars: List<BarItem<T>>,
     val labelTextStyle: TextStyle,
     val lineSettings: SelectedBarIndicatorLine?,
     val iconSize: Dp = 16.dp,
+    val xAxisLabelFormatter: XAxisLabelFormatter<T>,
 )
+
+@Immutable
+class XAxisLabelFormatter<T> private constructor(
+    val format: (T) -> String,
+    val style: (T) -> TextStyle,
+) {
+    fun getXAxisLabel(xValue: T): String {
+        return format(xValue)
+    }
+
+    fun getStyle(xValue: T): TextStyle {
+        return style(xValue)
+    }
+
+    companion object {
+        @Composable
+        fun <T> rememberXAxisLabelFormatter(
+            format: (T) -> String,
+            style: (T) -> TextStyle,
+        ): XAxisLabelFormatter<T> {
+            return remember {
+                XAxisLabelFormatter(
+                    format = format,
+                    style = style,
+                )
+            }
+        }
+    }
+}
 
 @Immutable
 data class SelectedBarIndicatorLine(
@@ -303,8 +365,9 @@ data class SelectedBarIndicatorLine(
 
 
 @Immutable
-data class BarItem(
+data class BarItem<T>(
     val id: Long,
+    val xValue: T,
     val heightFraction: Float,
     val color: Color,
     val label: String,
