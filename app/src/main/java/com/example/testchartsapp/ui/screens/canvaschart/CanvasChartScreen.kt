@@ -69,8 +69,8 @@ fun CanvasChartScreen(
             .padding(horizontal = 12.dp)
         ,
     ) {
-        val xLabelStyle = MaterialTheme.typography.bodySmall
-        val xPlaceholderLabelStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
+        val xLabelStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface)
+        val xPlaceholderLabelStyle = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFA3A19F))
         BarChart<Price>(
             chartData = BarChartData(
                 bars = bars,
@@ -86,7 +86,7 @@ fun CanvasChartScreen(
                         if (price.time.hour.mod(6) == 0 || price.time.hour == 23) {
                             price.time.hour.toString()
                         } else {
-                            "-"
+                            "•"
                         }
                     },
                     style = { price ->
